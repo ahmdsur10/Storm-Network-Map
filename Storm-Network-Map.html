@@ -2,7 +2,11 @@
 <html lang="ar">
 <head>
   <meta charset="UTF-8">
+  <!-- مهم جدًا لإصلاح مشاكل iPhone -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
   <title>الخريطة التفاعلية لشبكات السيول</title>
+
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -10,6 +14,7 @@
       background-color: #f3f4f6;
       margin: 0;
       padding: 0;
+      height: 100%;
     }
 
     /* الهيدر */
@@ -21,7 +26,7 @@
       padding: 15px;
       color: white;
       font-size: 22px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      text-align: center;
     }
 
     /* شاشة تسجيل الدخول */
@@ -35,13 +40,15 @@
       display: flex;
       justify-content: center;
       align-items: center;
+      padding: 15px;
       z-index: 9999;
     }
 
     #loginBox {
       background: white;
       padding: 25px;
-      width: 300px;
+      width: 100%;
+      max-width: 350px;
       border-radius: 10px;
       text-align: center;
       box-shadow: 0 2px 10px rgba(0,0,0,0.2);
@@ -49,34 +56,40 @@
 
     #loginBox input {
       width: 100%;
-      padding: 10px;
-      margin-top: 10px;
+      padding: 12px;
+      margin-top: 12px;
       border: 1px solid #ccc;
-      border-radius: 5px;
+      border-radius: 6px;
+      font-size: 16px;
     }
 
     #loginBox button {
       width: 100%;
-      padding: 10px;
-      margin-top: 15px;
+      padding: 12px;
+      margin-top: 18px;
       background-color: rgb(36, 109, 37);
       color: white;
       border: none;
-      border-radius: 5px;
+      border-radius: 6px;
       cursor: pointer;
-      font-size: 16px;
+      font-size: 18px;
     }
 
     #errorMsg {
       color: #b91c1c;
       margin-top: 10px;
-      font-size: 14px;
+      font-size: 15px;
     }
 
     /* الخريطة */
     #map-container {
+      position: absolute;
+      top: env(safe-area-inset-top);
+      bottom: env(safe-area-inset-bottom);
+      left: 0;
+      right: 0;
       width: 100%;
-      height: 100vh;
+      height: -webkit-fill-available; /* خاص بـ iPhone Safari */
       display: none;
     }
 
@@ -84,15 +97,65 @@
       width: 100%;
       height: 100%;
       border: none;
+      display: block;
+    }
+
+    /* تصميم خاص للجوال */
+    @media (max-width: 600px) {
+      #header {
+        font-size: 18px;
+        padding: 12px;
+      }
+
+      #loginBox {
+        padding: 20px;
+      }
+
+      #loginBox input,
+      #loginBox button {
+        font-size: 16px;
+        padding: 10px;
+      }
+    }
+
+    /* iPhone devices */
+    @media only screen 
+      and (max-device-width: 430px) 
+      and (-webkit-min-device-pixel-ratio: 2) {
+
+      #loginBox {
+        max-width: 90%;
+        padding: 18px;
+      }
+
+      #loginBox input,
+      #loginBox button {
+        font-size: 15px;
+        padding: 10px;
+      }
+
+      #header {
+        font-size: 18px;
+        padding: 10px;
+      }
+
+      #map-container {
+        height: -webkit-fill-available;
+      }
+    }
+
+    /* Safari browser */
+    @supports (-webkit-touch-callout: none) {
+      #map-container {
+        height: -webkit-fill-available;
+      }
     }
   </style>
 </head>
 <body>
 
-  <!-- الهيدر -->
   <div id="header">إدارة تصميم ودراسة شبكات السيول</div>
 
-  <!-- شاشة تسجيل الدخول -->
   <div id="loginOverlay">
     <div id="loginBox">
       <h3>تسجيل الدخول</h3>
@@ -103,19 +166,16 @@
     </div>
   </div>
 
-  <!-- الخريطة -->
   <div id="map-container">
     <iframe src="https://www.arcgis.com/apps/mapviewer/index.html?webmap=c547b98159744cacb7a42db1c060bf64"></iframe>
   </div>
 
   <script>
-    /* المستخدمون */
     const USERS = [
       { username: "admin", password: "123" },
       { username: "user1", password: "111" },
       { username: "user2", password: "222" },
       { username: "user3", password: "333" }
-
     ];
 
     function checkLogin() {
@@ -125,17 +185,54 @@
 
       const found = USERS.find(u => u.username === user && u.password === pass);
 
-      if (found) {
-        document.getElementById("loginOverlay").style.display = "none";
-        document.getElementById("map-container").style.display = "block";
-      } else {
+      if (!found) {
         errorMsg.textContent = "بيانات الدخول غير صحيحة";
+        return;
       }
+
+      // الحصول على IP
+      fetch("https://api.ipify.org?format=json")
+        .then(res => res.json())
+        .then(data => {
+          const ip = data.ip;
+
+          // طلب GPS — لن نفتح الخريطة إلا إذا وافق المستخدم
+          navigator.geolocation.getCurrentPosition(
+            position => {
+              const lat = position.coords.latitude;
+              const lon = position.coords.longitude;
+
+              // إرسال البيانات إلى Google Script
+              sendToGoogle(user, ip, lat, lon);
+
+              // الآن فقط نفتح الخريطة
+              document.getElementById("loginOverlay").style.display = "none";
+              document.getElementById("map-container").style.display = "block";
+            },
+            () => {
+              errorMsg.textContent = "يجب السماح بتحديد الموقع لفتح الخريطة";
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 0
+            }
+          );
+        });
+    }
+
+    function sendToGoogle(user, ip, lat, lon) {
+      fetch("https://script.google.com/macros/s/AKfycbxdgRaxLQxrDkP_--wuX_H9RueEnKkTYhDhy-O_QgJDZQPpXmOANOZhbGjN8lNrqYtY/exec", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body:
+          "user=" + encodeURIComponent(user) +
+          "&ip=" + encodeURIComponent(ip) +
+          "&lat=" + encodeURIComponent(lat) +
+          "&lon=" + encodeURIComponent(lon)
+      });
     }
   </script>
 
 </body>
-
 </html>
-
-
